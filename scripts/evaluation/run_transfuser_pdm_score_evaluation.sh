@@ -1,6 +1,6 @@
 TRAIN_TEST_SPLIT=navhard_two_stage
-CHECKPOINT=/path/to/transfuser.ckpt
-CACHE_PATH=YOUR_PATH_TO_METRIC_CACHE
+CHECKPOINT=/mnt/hdd5/Qiaoceng/navsim_workspace/ckpt/08291123_epoch99.ckpt
+CACHE_PATH=/mnt/hdd5/Qiaoceng/navsim_workspace/exp/metric_cache
 SYNTHETIC_SENSOR_PATH=$OPENSCENE_DATA_ROOT/navhard_two_stage/sensor_blobs
 SYNTHETIC_SCENES_PATH=$OPENSCENE_DATA_ROOT/navhard_two_stage/synthetic_scene_pickles
 
