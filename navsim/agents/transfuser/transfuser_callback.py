@@ -102,17 +102,17 @@ class TransfuserCallback(pl.Callback):
         :param predictions: dictionary of target names and predicted tensors
         :return: image tiles as RGB tensors
         """
-        camera = features["camera_feature"].permute(0, 2, 3, 1).numpy()
-        bev = targets["bev_semantic_map"].numpy()
-        lidar_map = features["lidar_feature"].squeeze(1).numpy()
-        agent_labels = targets["agent_labels"].numpy()
-        agent_states = targets["agent_states"].numpy()
-        trajectory = targets["trajectory"].numpy()
+        camera = features["camera_feature"].permute(0, 2, 3, 1).cpu().numpy()
+        bev = targets["bev_semantic_map"].cpu().numpy()
+        lidar_map = features["lidar_feature"].squeeze(1).cpu().numpy()
+        agent_labels = targets["agent_labels"].cpu().numpy()
+        agent_states = targets["agent_states"].cpu().numpy()
+        trajectory = targets["trajectory"].cpu().numpy()
 
-        pred_bev = predictions["bev_semantic_map"].argmax(1).numpy()
-        pred_agent_labels = predictions["agent_labels"].sigmoid().numpy()
-        pred_agent_states = predictions["agent_states"].numpy()
-        pred_trajectory = predictions["trajectory"].numpy()
+        pred_bev = predictions["bev_semantic_map"].argmax(1).cpu().numpy()
+        pred_agent_labels = predictions["agent_labels"].sigmoid().cpu().numpy()
+        pred_agent_states = predictions["agent_states"].cpu().numpy()
+        pred_trajectory = predictions["trajectory"].cpu().numpy()
 
         plots = []
         for sample_idx in range(self._num_rows * self._num_columns):

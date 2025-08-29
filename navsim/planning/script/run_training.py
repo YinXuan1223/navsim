@@ -14,6 +14,21 @@ from navsim.common.dataloader import SceneLoader
 from navsim.planning.training.agent_lightning_module import AgentLightningModule
 from navsim.planning.training.dataset import CacheOnlyDataset, Dataset
 
+
+def safe_collate_fn(batch):
+    """
+    Custom collate function that filters out None values from corrupted files.
+    """
+    # Filter out None values (from corrupted files)
+    batch = [item for item in batch if item is not None]
+    
+    if len(batch) == 0:
+        return None
+    
+    # Use default collate for valid samples
+    from torch.utils.data.dataloader import default_collate
+    return default_collate(batch)
+
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = "config/training"
@@ -122,9 +137,9 @@ def main(cfg: DictConfig) -> None:
         train_data, val_data = build_datasets(cfg, agent)
 
     logger.info("Building Datasets")
-    train_dataloader = DataLoader(train_data, **cfg.dataloader.params, shuffle=True)
+    train_dataloader = DataLoader(train_data, **cfg.dataloader.params, shuffle=True, collate_fn=safe_collate_fn)
     logger.info("Num training samples: %d", len(train_data))
-    val_dataloader = DataLoader(val_data, **cfg.dataloader.params, shuffle=False)
+    val_dataloader = DataLoader(val_data, **cfg.dataloader.params, shuffle=False, collate_fn=safe_collate_fn)
     logger.info("Num validation samples: %d", len(val_data))
 
     logger.info("Building Trainer")

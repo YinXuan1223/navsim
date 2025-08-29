@@ -13,7 +13,7 @@ class TransfuserConfig:
     image_architecture: str = "resnet34"
     lidar_architecture: str = "resnet34"
 
-    latent: bool = False
+    latent: bool = True
     latent_rad_thresh: float = 4 * np.pi / 9
 
     max_height_lidar: float = 100.0

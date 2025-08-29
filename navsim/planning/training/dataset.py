@@ -16,9 +16,14 @@ logger = logging.getLogger(__name__)
 
 def load_feature_target_from_pickle(path: Path) -> Dict[str, torch.Tensor]:
     """Helper function to load pickled feature/target from path."""
-    with gzip.open(path, "rb") as f:
-        data_dict: Dict[str, torch.Tensor] = pickle.load(f)
-    return data_dict
+    try:
+        with gzip.open(path, "rb") as f:
+            data_dict: Dict[str, torch.Tensor] = pickle.load(f)
+        return data_dict
+    except (gzip.BadGzipFile, OSError, EOFError, pickle.UnpicklingError) as e:
+        logger.warning(f"Failed to load corrupted file {path}: {e}")
+        # Return empty dict for corrupted files, or re-raise to skip the sample
+        raise RuntimeError(f"Corrupted cache file: {path}") from e
 
 
 def dump_feature_target_to_pickle(path: Path, data_dict: Dict[str, torch.Tensor]) -> None:
@@ -74,9 +79,14 @@ class CacheOnlyDataset(torch.utils.data.Dataset):
         """
         Loads and returns pair of feature and target dict from data.
         :param idx: index of sample to load.
-        :return: tuple of feature and target dictionary
+        :return: tuple of feature and target dictionary, or None if corrupted
         """
-        return self._load_scene_with_token(self.tokens[idx])
+        try:
+            return self._load_scene_with_token(self.tokens[idx])
+        except RuntimeError as e:
+            logger.warning(f"Skipping corrupted sample at index {idx} (token: {self.tokens[idx]}): {e}")
+            # Return None for corrupted samples - this will be handled by custom collate_fn
+            return None
 
     @staticmethod
     def _load_valid_caches(
@@ -100,10 +110,26 @@ class CacheOnlyDataset(torch.utils.data.Dataset):
             log_path = cache_path / log_name
             for token_path in log_path.iterdir():
                 found_caches: List[bool] = []
+                cache_files_valid: List[bool] = []
+                
                 for builder in feature_builders + target_builders:
                     data_dict_path = token_path / (builder.get_unique_name() + ".gz")
-                    found_caches.append(data_dict_path.is_file())
-                if all(found_caches):
+                    file_exists = data_dict_path.is_file()
+                    found_caches.append(file_exists)
+                    
+                    # Check if the gzip file is valid
+                    if file_exists:
+                        try:
+                            # Quick validity check by attempting to read the file
+                            load_feature_target_from_pickle(data_dict_path)
+                            cache_files_valid.append(True)
+                        except Exception as e:
+                            logger.warning(f"Skipping corrupted cache file {data_dict_path}: {e}")
+                            cache_files_valid.append(False)
+                    else:
+                        cache_files_valid.append(False)
+                
+                if all(found_caches) and all(cache_files_valid):
                     valid_cache_paths[token_path.name] = token_path
 
         return valid_cache_paths
@@ -120,13 +146,23 @@ class CacheOnlyDataset(torch.utils.data.Dataset):
         features: Dict[str, torch.Tensor] = {}
         for builder in self._feature_builders:
             data_dict_path = token_path / (builder.get_unique_name() + ".gz")
-            data_dict = load_feature_target_from_pickle(data_dict_path)
-            features.update(data_dict)
+            try:
+                data_dict = load_feature_target_from_pickle(data_dict_path)
+                features.update(data_dict)
+            except RuntimeError as e:
+                logger.error(f"Failed to load feature cache {data_dict_path}: {e}")
+                # Re-raise to trigger dataset to skip this sample
+                raise
 
         targets: Dict[str, torch.Tensor] = {}
         for builder in self._target_builders:
             data_dict_path = token_path / (builder.get_unique_name() + ".gz")
-            data_dict = load_feature_target_from_pickle(data_dict_path)
+            try:
+                data_dict = load_feature_target_from_pickle(data_dict_path)
+            except RuntimeError as e:
+                logger.error(f"Failed to load target cache {data_dict_path}: {e}")
+                # Re-raise to trigger dataset to skip this sample
+                raise
             targets.update(data_dict)
 
         return (features, targets)
@@ -175,10 +211,26 @@ class Dataset(torch.utils.data.Dataset):
             for log_path in cache_path.iterdir():
                 for token_path in log_path.iterdir():
                     found_caches: List[bool] = []
+                    cache_files_valid: List[bool] = []
+                    
                     for builder in feature_builders + target_builders:
                         data_dict_path = token_path / (builder.get_unique_name() + ".gz")
-                        found_caches.append(data_dict_path.is_file())
-                    if all(found_caches):
+                        file_exists = data_dict_path.is_file()
+                        found_caches.append(file_exists)
+                        
+                        # Check if the gzip file is valid
+                        if file_exists:
+                            try:
+                                # Quick validity check by attempting to read the file
+                                load_feature_target_from_pickle(data_dict_path)
+                                cache_files_valid.append(True)
+                            except Exception as e:
+                                logger.warning(f"Skipping corrupted cache file {data_dict_path}: {e}")
+                                cache_files_valid.append(False)
+                        else:
+                            cache_files_valid.append(False)
+                    
+                    if all(found_caches) and all(cache_files_valid):
                         valid_cache_paths[token_path.name] = token_path
 
         return valid_cache_paths
