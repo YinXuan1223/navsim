@@ -23,6 +23,9 @@ exp
 # data
 dataset
 
+# model
+model
+
 # lsf
 *.bsub
 

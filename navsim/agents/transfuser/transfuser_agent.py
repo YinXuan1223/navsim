@@ -47,6 +47,9 @@ class TransfuserAgent(AbstractAgent):
 
     def initialize(self) -> None:
         """Inherited, see superclass."""
+        if self._checkpoint_path is None:
+            raise ValueError("checkpoint_path cannot be None. Please provide a valid checkpoint path.")
+        
         if torch.cuda.is_available():
             state_dict: Dict[str, Any] = torch.load(self._checkpoint_path)["state_dict"]
         else:
