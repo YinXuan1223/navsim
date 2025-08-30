@@ -104,7 +104,12 @@ class TransfuserCallback(pl.Callback):
         """
         camera = features["camera_feature"].permute(0, 2, 3, 1).cpu().numpy()
         bev = targets["bev_semantic_map"].cpu().numpy()
-        lidar_map = features["lidar_feature"].squeeze(1).cpu().numpy()
+        
+        # Check if lidar_feature exists (not available in latent mode)
+        has_lidar = "lidar_feature" in features
+        if has_lidar:
+            lidar_map = features["lidar_feature"].squeeze(1).cpu().numpy()
+        
         agent_labels = targets["agent_labels"].cpu().numpy()
         agent_states = targets["agent_states"].cpu().numpy()
         trajectory = targets["trajectory"].cpu().numpy()
@@ -116,22 +121,26 @@ class TransfuserCallback(pl.Callback):
 
         plots = []
         for sample_idx in range(self._num_rows * self._num_columns):
-            plot = np.zeros((256, 768, 3), dtype=np.uint8)
+            # Adjust plot width based on whether we have lidar data
+            plot_width = 768 if has_lidar else 512
+            plot = np.zeros((256, plot_width, 3), dtype=np.uint8)
             plot[:128, :512] = (camera[sample_idx] * 255).astype(np.uint8)[::2, ::2]
 
             plot[128:, :256] = semantic_map_to_rgb(bev[sample_idx], self._config)
             plot[128:, 256:512] = semantic_map_to_rgb(pred_bev[sample_idx], self._config)
 
-            agent_states_ = agent_states[sample_idx][agent_labels[sample_idx]]
-            pred_agent_states_ = pred_agent_states[sample_idx][pred_agent_labels[sample_idx] > 0.5]
-            plot[:, 512:] = lidar_map_to_rgb(
-                lidar_map[sample_idx],
-                agent_states_,
-                pred_agent_states_,
-                trajectory[sample_idx],
-                pred_trajectory[sample_idx],
-                self._config,
-            )
+            # Only add lidar visualization if lidar data is available
+            if has_lidar:
+                agent_states_ = agent_states[sample_idx][agent_labels[sample_idx]]
+                pred_agent_states_ = pred_agent_states[sample_idx][pred_agent_labels[sample_idx] > 0.5]
+                plot[:, 512:] = lidar_map_to_rgb(
+                    lidar_map[sample_idx],
+                    agent_states_,
+                    pred_agent_states_,
+                    trajectory[sample_idx],
+                    pred_trajectory[sample_idx],
+                    self._config,
+                )
 
             plots.append(torch.tensor(plot).permute(2, 0, 1))
 

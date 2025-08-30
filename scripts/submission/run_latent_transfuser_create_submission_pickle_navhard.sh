@@ -19,4 +19,5 @@ institution=$INSTITUTION \
 country=$COUNTRY \
 synthetic_sensor_path=$SYNTHETIC_SENSOR_PATH \
 synthetic_scenes_path=$SYNTHETIC_SCENES_PATH \
-agent.checkpoint_path=$NAVSIM_DEVKIT_ROOT/ckpt/08291123_epoch99.ckpt \
+agent.checkpoint_path=$NAVSIM_DEVKIT_ROOT/model/0830.ckpt \
+agent.config.latent=true

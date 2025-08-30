@@ -20,11 +20,11 @@
 # exp
 exp
 
-# data
-dataset
-
 # model
 model
+
+# data
+dataset
 
 # lsf
 *.bsub
