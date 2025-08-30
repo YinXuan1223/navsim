@@ -1,8 +1,8 @@
-TEAM_NAME="MUST_SET"
-AUTHORS="MUST_SET"
-EMAIL="MUST_SET"
-INSTITUTION="MUST_SET"
-COUNTRY="MUST_SET"
+TEAM_NAME="hehehe"
+AUTHORS="qiaoceng, yinxuan"
+EMAIL="leevicky931223@gmail.com"
+INSTITUTION="nycu"
+COUNTRY="Taiwan"
 
 TRAIN_TEST_SPLIT=navhard_two_stage
 SYNTHETIC_SENSOR_PATH=$OPENSCENE_DATA_ROOT/navhard_two_stage/sensor_blobs
@@ -10,8 +10,8 @@ SYNTHETIC_SCENES_PATH=$OPENSCENE_DATA_ROOT/navhard_two_stage/synthetic_scene_pic
 
 python $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_create_submission_pickle.py \
 train_test_split=$TRAIN_TEST_SPLIT \
-agent=constant_velocity_agent \
-experiment_name=submission_cv_agent \
+agent=ego_status_mlp_agent \
+experiment_name=submission_ego_mlp_agent \
 team_name=$TEAM_NAME \
 authors=$AUTHORS \
 email=$EMAIL \

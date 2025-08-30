@@ -23,9 +23,9 @@ class EgoStatusFeatureBuilder(AbstractFeatureBuilder):
     def compute_features(self, agent_input: AgentInput) -> Dict[str, torch.Tensor]:
         """Inherited, see superclass."""
         ego_status = agent_input.ego_statuses[-1]
-        velocity = torch.tensor(ego_status.ego_velocity)
-        acceleration = torch.tensor(ego_status.ego_acceleration)
-        driving_command = torch.tensor(ego_status.driving_command)
+        velocity = torch.tensor(ego_status.ego_velocity, dtype=torch.float32)
+        acceleration = torch.tensor(ego_status.ego_acceleration, dtype=torch.float32)
+        driving_command = torch.tensor(ego_status.driving_command, dtype=torch.float32)
         ego_status_feature = torch.cat([velocity, acceleration, driving_command], dim=-1)
         return {"ego_status": ego_status_feature}
 
@@ -48,7 +48,7 @@ class TrajectoryTargetBuilder(AbstractTargetBuilder):
     def compute_targets(self, scene: Scene) -> Dict[str, torch.Tensor]:
         """Inherited, see superclass."""
         future_trajectory = scene.get_future_trajectory(num_trajectory_frames=self._trajectory_sampling.num_poses)
-        return {"trajectory": torch.tensor(future_trajectory.poses)}
+        return {"trajectory": torch.tensor(future_trajectory.poses, dtype=torch.float32)}
 
 
 class EgoStatusMLPAgent(AbstractAgent):
@@ -90,6 +90,9 @@ class EgoStatusMLPAgent(AbstractAgent):
 
     def initialize(self) -> None:
         """Inherited, see superclass."""
+        if self._checkpoint_path is None:
+            return
+            
         if torch.cuda.is_available():
             state_dict: Dict[str, Any] = torch.load(self._checkpoint_path)["state_dict"]
         else:
