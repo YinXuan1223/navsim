@@ -134,7 +134,8 @@ def run_pdm_score(args: List[Dict[str, Union[List[str], DictConfig]]]) -> List[p
     )
     scene_loader_tokens_stage_two = scene_loader.reactive_tokens_stage_two
 
-    tokens_to_evaluate_stage_two = list(set(scene_loader_tokens_stage_two) & set(metric_cache_loader.tokens))
+    #tokens_to_evaluate_stage_two = list(set(scene_loader_tokens_stage_two) & set(metric_cache_loader.tokens))
+    tokens_to_evaluate_stage_two = list(set(scene_loader_tokens_stage_two if scene_loader_tokens_stage_two else []) & set(metric_cache_loader.tokens if metric_cache_loader.tokens else []))
     for idx, (token) in enumerate(tokens_to_evaluate_stage_two):
         logger.info(
             f"Processing stage two reactive scenario {idx + 1} / {len(tokens_to_evaluate_stage_two)} in thread_id={thread_id}, node_id={node_id}"
@@ -364,25 +365,52 @@ def main(cfg: DictConfig) -> None:
 
     pdm_score_df = pd.concat(score_rows)
 
+    # try:
+    #     raw_mapping = cfg.train_test_split.reactive_all_mapping
+    #     all_mappings: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
+
+    #     for orig_token, prev_token, two_stage_pairs in raw_mapping:
+    #         if prev_token in set(scene_loader.tokens) or orig_token in set(scene_loader.tokens):
+    #             all_mappings[(orig_token, prev_token)] = [tuple(pair) for pair in two_stage_pairs]
+
+    #     pdm_score_df = create_scene_aggregators(
+    #         all_mappings, pdm_score_df, instantiate(cfg.simulator.proposal_sampling)
+    #     )
+    #     pdm_score_df = compute_final_scores(pdm_score_df)
+    #     pseudo_closed_loop_valid = True
+
+    # except Exception:
+    #     logger.warning("----------- Failed to calculate pseudo closed-loop weights or comfort:")
+    #     traceback.print_exc()
+    #     pdm_score_df["weight"] = 1.0
+    #     pseudo_closed_loop_valid = False
+    
     try:
-        raw_mapping = cfg.train_test_split.reactive_all_mapping
+        raw_mapping = getattr(cfg.train_test_split, 'reactive_all_mapping', [])
         all_mappings: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
 
-        for orig_token, prev_token, two_stage_pairs in raw_mapping:
-            if prev_token in set(scene_loader.tokens) or orig_token in set(scene_loader.tokens):
-                all_mappings[(orig_token, prev_token)] = [tuple(pair) for pair in two_stage_pairs]
+        if raw_mapping:
+            for orig_token, prev_token, two_stage_pairs in raw_mapping:
+                if prev_token in set(scene_loader.tokens) or orig_token in set(scene_loader.tokens):
+                    all_mappings[(orig_token, prev_token)] = [tuple(pair) for pair in two_stage_pairs]
 
-        pdm_score_df = create_scene_aggregators(
-            all_mappings, pdm_score_df, instantiate(cfg.simulator.proposal_sampling)
-        )
-        pdm_score_df = compute_final_scores(pdm_score_df)
+            pdm_score_df = create_scene_aggregators(
+                all_mappings, pdm_score_df, instantiate(cfg.simulator.proposal_sampling)
+            )
+            pdm_score_df = compute_final_scores(pdm_score_df)
+        else:
+            logger.warning("No reactive_all_mapping found in config, using default weights")
+            pdm_score_df["weight"] = 1.0
+            all_mappings = {}
         pseudo_closed_loop_valid = True
 
     except Exception:
         logger.warning("----------- Failed to calculate pseudo closed-loop weights or comfort:")
         traceback.print_exc()
         pdm_score_df["weight"] = 1.0
+        all_mappings = {}
         pseudo_closed_loop_valid = False
+
 
     num_sucessful_scenarios = pdm_score_df["valid"].sum()
     num_failed_scenarios = len(pdm_score_df) - num_sucessful_scenarios
@@ -400,10 +428,36 @@ def main(cfg: DictConfig) -> None:
         )
     ]
 
-    pcl_group_score, pcl_stage1_score, pcl_stage2_score = calculate_individual_mapping_scores(
-        pdm_score_df[score_cols + ["token", "weight"]], all_mappings
-    )
+    # pcl_group_score, pcl_stage1_score, pcl_stage2_score = calculate_individual_mapping_scores(
+    #     pdm_score_df[score_cols + ["token", "weight"]], all_mappings
+    # )
+    if all_mappings:
+        pcl_group_score, pcl_stage1_score, pcl_stage2_score = calculate_individual_mapping_scores(
+            pdm_score_df[score_cols + ["token", "weight"]], all_mappings
+        )
+    else:
+        # 創建空的 Series 與預設值
+        score_series = pd.Series(dtype=float)
+        if "score" in score_cols:
+            score_series["score"] = np.nan
+        for col in score_cols:
+            if col != "score":
+                score_series[col] = np.nan
+        pcl_group_score = score_series.copy()
+        pcl_stage1_score = score_series.copy()
+        pcl_stage2_score = score_series.copy()
 
+    # for col in score_cols:
+    #     stage_one_mask = pdm_score_df["frame_type"] == SceneFrameType.ORIGINAL
+    #     stage_two_mask = pdm_score_df["frame_type"] == SceneFrameType.SYNTHETIC
+
+    #     pdm_score_df.loc[stage_one_mask, f"{col}_stage_one"] = pdm_score_df.loc[stage_one_mask, col]
+    #     pdm_score_df.loc[stage_two_mask, f"{col}_stage_two"] = pdm_score_df.loc[stage_two_mask, col]
+
+    # pdm_score_df.drop(columns=score_cols, inplace=True)
+    # pdm_score_df["score"] = pdm_score_df["score_stage_one"].combine_first(pdm_score_df["score_stage_two"])
+    # pdm_score_df.drop(columns=["score_stage_one", "score_stage_two"], inplace=True)
+    
     for col in score_cols:
         stage_one_mask = pdm_score_df["frame_type"] == SceneFrameType.ORIGINAL
         stage_two_mask = pdm_score_df["frame_type"] == SceneFrameType.SYNTHETIC
@@ -411,9 +465,23 @@ def main(cfg: DictConfig) -> None:
         pdm_score_df.loc[stage_one_mask, f"{col}_stage_one"] = pdm_score_df.loc[stage_one_mask, col]
         pdm_score_df.loc[stage_two_mask, f"{col}_stage_two"] = pdm_score_df.loc[stage_two_mask, col]
 
-    pdm_score_df.drop(columns=score_cols, inplace=True)
-    pdm_score_df["score"] = pdm_score_df["score_stage_one"].combine_first(pdm_score_df["score_stage_two"])
-    pdm_score_df.drop(columns=["score_stage_one", "score_stage_two"], inplace=True)
+    # 確保 score 列存在於分離前
+    if "score" in score_cols:
+        pdm_score_df.drop(columns=score_cols, inplace=True)
+        # 檢查 score_stage_one 和 score_stage_two 是否存在
+        if "score_stage_one" in pdm_score_df.columns and "score_stage_two" in pdm_score_df.columns:
+            pdm_score_df["score"] = pdm_score_df["score_stage_one"].combine_first(pdm_score_df["score_stage_two"])
+            pdm_score_df.drop(columns=["score_stage_one", "score_stage_two"], inplace=True)
+        elif "score_stage_one" in pdm_score_df.columns:
+            pdm_score_df["score"] = pdm_score_df["score_stage_one"]
+            pdm_score_df.drop(columns=["score_stage_one"], inplace=True)
+        elif "score_stage_two" in pdm_score_df.columns:
+            pdm_score_df["score"] = pdm_score_df["score_stage_two"]
+            pdm_score_df.drop(columns=["score_stage_two"], inplace=True)
+    else:
+        # 如果沒有 score 列，創建一個默認的
+        pdm_score_df.drop(columns=score_cols, inplace=True)
+        pdm_score_df["score"] = np.nan
 
     stage1_cols = [f"{col}_stage_one" for col in score_cols if col != "score"]
     stage2_cols = [f"{col}_stage_two" for col in score_cols if col != "score"]
@@ -444,8 +512,9 @@ def main(cfg: DictConfig) -> None:
     combined_row = pd.Series(index=pdm_score_df.columns, dtype=object)
     combined_row["token"] = "extended_pdm_score_combined"
     combined_row["valid"] = pseudo_closed_loop_valid
-    combined_row["score"] = pcl_group_score["score"]
-
+    #combined_row["score"] = pcl_group_score["score"]
+    combined_row["score"] = pcl_group_score.get("score", np.nan)
+    
     for col in pcl_stage1_score.index:
         if col not in ["token", "valid", "score"]:
             combined_row[f"{col}_stage_one"] = pcl_stage1_score[col]
